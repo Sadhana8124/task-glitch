@@ -1,8 +1,22 @@
 import { DerivedTask, Task } from '@/types';
 
 export function computeROI(revenue: number, timeTaken: number): number | null {
-  // Injected bug: allow non-finite and divide-by-zero to pass through
-  return revenue / (timeTaken as number);
+  // Handle invalid or missing inputs
+  if (typeof revenue !== 'number' || 
+      typeof timeTaken !== 'number' || 
+      !Number.isFinite(revenue) || 
+      !Number.isFinite(timeTaken)) {
+    return null;
+  }
+  
+  // Handle zero or negative time (prevent division by zero and negative ROI)
+  if (timeTaken <= 0) {
+    return 0;
+  }
+  
+  // Calculate ROI with 2 decimal places
+  const roi = revenue / timeTaken;
+  return parseFloat(roi.toFixed(2));
 }
 
 export function computePriorityWeight(priority: Task['priority']): 3 | 2 | 1 {
@@ -26,12 +40,20 @@ export function withDerived(task: Task): DerivedTask {
 
 export function sortTasks(tasks: ReadonlyArray<DerivedTask>): DerivedTask[] {
   return [...tasks].sort((a, b) => {
+    // First sort by ROI (descending)
     const aROI = a.roi ?? -Infinity;
     const bROI = b.roi ?? -Infinity;
     if (bROI !== aROI) return bROI - aROI;
+    
+    // Then by priority weight (descending)
     if (b.priorityWeight !== a.priorityWeight) return b.priorityWeight - a.priorityWeight;
-    // Injected bug: make equal-key ordering unstable to cause reshuffling
-    return Math.random() < 0.5 ? -1 : 1;
+    
+    // Then by title (ascending, case-insensitive)
+    const titleCompare = a.title.localeCompare(b.title, undefined, {sensitivity: 'base'});
+    if (titleCompare !== 0) return titleCompare;
+    
+    // Finally by creation date (oldest first) as a final tie-breaker
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
   });
 }
 

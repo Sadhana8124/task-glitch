@@ -19,8 +19,10 @@ import {
 } from '@/utils/logic';
 
 function AppContent() {
-  const { loading, error, metrics, derivedSorted, addTask, updateTask, deleteTask, undoDelete, lastDeleted } = useTasksContext();
-  const handleCloseUndo = () => {};
+  const { loading, error, metrics, derivedSorted, addTask, updateTask, deleteTask, undoDelete, lastDeleted, clearLastDeleted } = useTasksContext();
+  const handleCloseUndo = useCallback(() => {
+    clearLastDeleted();
+  },[clearLastDeleted]);
   const [q, setQ] = useState('');
   const [fStatus, setFStatus] = useState<string>('All');
   const [fPriority, setFPriority] = useState<string>('All');
@@ -58,6 +60,7 @@ function AppContent() {
     undoDelete();
     setActivity(prev => [createActivity('undo', 'Undo delete'), ...prev].slice(0, 50));
   }, [undoDelete, createActivity]);
+ 
   return (
     <Box sx={{ minHeight: '100dvh', bgcolor: 'background.default' }}>
       <Container maxWidth="lg" sx={{ py: { xs: 3, md: 5 } }}>
@@ -87,14 +90,7 @@ function AppContent() {
           {error && <Alert severity="error">{error}</Alert>}
           {!loading && !error && (
             <MetricsBar
-              metricsOverride={{
-                totalRevenue: computeTotalRevenue(filtered),
-                totalTimeTaken: filtered.reduce((s, t) => s + t.timeTaken, 0),
-                timeEfficiencyPct: computeTimeEfficiency(filtered),
-                revenuePerHour: computeRevenuePerHour(filtered),
-                averageROI: computeAverageROI(filtered),
-                performanceGrade: computePerformanceGrade(computeAverageROI(filtered)),
-              }}
+              metricsOverride={metrics}
             />
           )}
           {!loading && !error && (

@@ -61,7 +61,21 @@ export default function TaskTable({ tasks, onAdd, onUpdate, onDelete }: Props) {
             </TableHead>
             <TableBody>
               {tasks.map(t => (
-                <TableRow key={t.id} hover onClick={() => setDetails(t)} sx={{ cursor: 'pointer' }}>
+                <TableRow 
+                  key={t.id} 
+                  hover 
+                  onClick={(e) => {
+                    // Only trigger details if the click wasn't on a button or anchor
+                    const target = e.target as HTMLElement;
+                    if (!target.closest('button') && !target.closest('a')) {
+                      setDetails(t);
+                    }
+                  }} 
+                  sx={{ 
+                    cursor: 'pointer',
+                    '&:hover': { backgroundColor: 'action.hover' }
+                  }}
+                >
                   <TableCell>
                     <Stack spacing={0.5}>
                       <Typography fontWeight={600}>{t.title}</Typography>
@@ -79,18 +93,36 @@ export default function TaskTable({ tasks, onAdd, onUpdate, onDelete }: Props) {
                   </TableCell>
                   <TableCell align="right">${t.revenue.toLocaleString()}</TableCell>
                   <TableCell align="right">{t.timeTaken}</TableCell>
-                  <TableCell align="right">{t.roi == null ? 'N/A' : t.roi.toFixed(1)}</TableCell>
+                  <TableCell align="right">
+                    {t.roi === null ? '—' : t.roi.toLocaleString(undefined, { 
+                      minimumFractionDigits: 1, 
+                      maximumFractionDigits: 1 
+                    })}
+                  </TableCell>
                   <TableCell>{t.priority}</TableCell>
                   <TableCell>{t.status}</TableCell>
                   <TableCell align="right">
-                    <Stack direction="row" spacing={1} justifyContent="flex-end">
+                    <Stack direction="row" spacing={1} justifyContent="flex-end" onClick={(e) => e.stopPropagation()}>
                       <Tooltip title="Edit">
-                        <IconButton onClick={() => handleEditClick(t)} size="small">
+                        <IconButton 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditClick(t);
+                          }} 
+                          size="small"
+                        >
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Delete">
-                        <IconButton onClick={() => onDelete(t.id)} size="small" color="error">
+                        <IconButton 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(t.id);
+                          }} 
+                          size="small" 
+                          color="error"
+                        >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>

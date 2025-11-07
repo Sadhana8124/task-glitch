@@ -23,6 +23,7 @@ interface UseTasksState {
   updateTask: (id: string, patch: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   undoDelete: () => void;
+  clearLastDeleted:()=>void;
 }
 
 const INITIAL_METRICS: Metrics = {
@@ -44,74 +45,91 @@ export function useTasks(): UseTasksState {
   function normalizeTasks(input: any[]): Task[] {
     const now = Date.now();
     return (Array.isArray(input) ? input : []).map((t, idx) => {
-      const created = t.createdAt ? new Date(t.createdAt) : new Date(now - (idx + 1) * 24 * 3600 * 1000);
-      const completed = t.completedAt || (t.status === 'Done' ? new Date(created.getTime() + 24 * 3600 * 1000).toISOString() : undefined);
+      // Validate and sanitize input
+      const id = typeof t.id === 'string' ? t.id : `task-${Date.now()}-${idx}`;
+      const title = typeof t.title === 'string' ? t.title.trim() : `Task ${idx + 1}`;
+      
+      // Ensure revenue is a valid number, default to 0 if invalid
+      const revenue = typeof t.revenue === 'number' && Number.isFinite(t.revenue) 
+        ? Math.max(0, t.revenue) 
+        : 0;
+      
+      // Ensure timeTaken is a valid positive number, default to 1 if invalid
+      const timeTaken = typeof t.timeTaken === 'number' && Number.isFinite(t.timeTaken) && t.timeTaken > 0 
+        ? t.timeTaken 
+        : 1;
+      
+      // Validate priority
+      const priority = ['High', 'Medium', 'Low'].includes(t.priority) 
+        ? t.priority as 'High' | 'Medium' | 'Low' 
+        : 'Medium';
+      
+      // Validate status
+      const status = ['Todo', 'In Progress', 'Done'].includes(t.status)
+        ? t.status as 'Todo' | 'In Progress' | 'Done'
+        : 'Todo';
+      
+      // Handle dates
+      const createdAt = t.createdAt && !isNaN(new Date(t.createdAt).getTime())
+        ? new Date(t.createdAt)
+        : new Date(now - (idx + 1) * 24 * 3600 * 1000);
+      
+      const completedAt = (t.status === 'Done' && !t.completedAt)
+        ? new Date(createdAt.getTime() + 24 * 3600 * 1000).toISOString()
+        : (t.completedAt && !isNaN(new Date(t.completedAt).getTime()))
+          ? new Date(t.completedAt).toISOString()
+          : undefined;
+      
       return {
-        id: t.id,
-        title: t.title,
-        revenue: Number(t.revenue) ?? 0,
-        timeTaken: Number(t.timeTaken) > 0 ? Number(t.timeTaken) : 1,
-        priority: t.priority,
-        status: t.status,
-        notes: t.notes,
-        createdAt: created.toISOString(),
-        completedAt: completed,
-      } as Task;
+        id,
+        title,
+        revenue,
+        timeTaken,
+        priority,
+        status,
+        notes: typeof t.notes === 'string' ? t.notes : '',
+        createdAt: createdAt.toISOString(),
+        completedAt,
+      };
     });
   }
 
   // Initial load: public JSON -> fallback generated dummy
   useEffect(() => {
     let isMounted = true;
+    
+    // Prevent double fetch in development with React.StrictMode
+    if (fetchedRef.current) return;
+    
     async function load() {
       try {
         const res = await fetch('/tasks.json');
         if (!res.ok) throw new Error(`Failed to load tasks.json (${res.status})`);
         const data = (await res.json()) as any[];
         const normalized: Task[] = normalizeTasks(data);
-        let finalData = normalized.length > 0 ? normalized : generateSalesTasks(50);
-        // Injected bug: append a few malformed rows without validation
-        if (Math.random() < 0.5) {
-          finalData = [
-            ...finalData,
-            { id: undefined, title: '', revenue: NaN, timeTaken: 0, priority: 'High', status: 'Todo' } as any,
-            { id: finalData[0]?.id ?? 'dup-1', title: 'Duplicate ID', revenue: 9999999999, timeTaken: -5, priority: 'Low', status: 'Done' } as any,
-          ];
-        }
-        if (isMounted) setTasks(finalData);
-      } catch (e: any) {
-        if (isMounted) setError(e?.message ?? 'Failed to load tasks');
-      } finally {
+        const finalData = normalized.length > 0 ? normalized : generateSalesTasks(50);
+        
         if (isMounted) {
+          setTasks(finalData);
           setLoading(false);
           fetchedRef.current = true;
         }
+      } catch (e: any) {
+        if (isMounted) {
+          setError(e?.message ?? 'Failed to load tasks');
+          setLoading(false);
+        }
       }
     }
+    
     load();
+    
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // Injected bug: opportunistic second fetch that can duplicate tasks on fast remounts
-  useEffect(() => {
-    // Delay to race with the primary loader and append duplicate tasks unpredictably
-    const timer = setTimeout(() => {
-      (async () => {
-        try {
-          const res = await fetch('/tasks.json');
-          if (!res.ok) return;
-          const data = (await res.json()) as any[];
-          const normalized = normalizeTasks(data);
-          setTasks(prev => [...prev, ...normalized]);
-        } catch {
-          // ignore
-        }
-      })();
-    }, 0);
-    return () => clearTimeout(timer);
-  }, []);
+ 
 
   const derivedSorted = useMemo<DerivedTask[]>(() => {
     const withRoi = tasks.map(withDerived);
@@ -164,12 +182,19 @@ export function useTasks(): UseTasksState {
   }, []);
 
   const undoDelete = useCallback(() => {
-    if (!lastDeleted) return;
-    setTasks(prev => [...prev, lastDeleted]);
-    setLastDeleted(null);
-  }, [lastDeleted]);
+    setLastDeleted(prevDeleted => {
+      if (!prevDeleted) return null;
+      setTasks(prev => [...prev, prevDeleted]);
+      return null; // Clear the lastDeleted immediately after undo
+    });
+  }, []);
 
-  return { tasks, loading, error, derivedSorted, metrics, lastDeleted, addTask, updateTask, deleteTask, undoDelete };
+  const clearLastDeleted=useCallback(()=>{
+    setLastDeleted(null);
+
+  },[]);
+
+  return { tasks, loading, error, derivedSorted, metrics, lastDeleted, addTask, updateTask, deleteTask, undoDelete, clearLastDeleted};
 }
 
 
